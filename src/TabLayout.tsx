@@ -45,6 +45,19 @@ export default function TabLayout({
 				: new Array(nav.length).fill(false)
 		}
 
+		try {
+			const stored = localStorage.getItem(pinnedTabsStorageKey)
+			if (stored) {
+				const storedIds = JSON.parse(stored) as string[]
+				if (Array.isArray(storedIds)) {
+					// Convert stored IDs to boolean array
+					return nav.map((x) => storedIds.includes(x.id))
+				}
+			}
+		} catch (e) {
+			console.warn('Failed to load pinned tabs from localStorage', e)
+		}
+
 		return defaultPinnedTabs ? nav.map((x) => defaultPinnedTabs?.includes(x.id)) : new Array(nav.length).fill(false)
 	}
 
@@ -69,7 +82,7 @@ export default function TabLayout({
 		if (!persistPinnedTabs || !pinnedTabsStorageKey || typeof window === 'undefined') return
 
 		try {
-			// Ensure tabs array matches nav length before saving
+			// Ensure tabs array matches nav length
 			const safeTabs =
 				tabs.length === nav.length
 					? tabs
@@ -77,8 +90,11 @@ export default function TabLayout({
 							.concat(new Array(Math.max(0, nav.length - tabs.length)).fill(false))
 							.slice(0, nav.length)
 
-			// Save raw boolean array
-			localStorage.setItem(pinnedTabsStorageKey, JSON.stringify(safeTabs))
+			// Convert boolean array to tab IDs
+			const pinnedIds = nav.map((x, i) => (safeTabs[i] ? x.id : null)).filter((id): id is string => id !== null)
+
+			// Save array of pinned tab IDs
+			localStorage.setItem(pinnedTabsStorageKey, JSON.stringify(pinnedIds))
 		} catch (e) {
 			console.warn('Failed to save pinned tabs to localStorage', e)
 		}
@@ -106,15 +122,11 @@ export default function TabLayout({
 		try {
 			const stored = localStorage.getItem(pinnedTabsStorageKey)
 			if (stored) {
-				const storedTabs = JSON.parse(stored) as boolean[]
-				if (Array.isArray(storedTabs)) {
-					// Ensure array length matches nav length
-					const loadedTabs = [...storedTabs]
-					while (loadedTabs.length < nav.length) {
-						loadedTabs.push(false)
-					}
-					const finalPinnedTabs = loadedTabs.slice(0, nav.length)
-					setPinnedTabs(finalPinnedTabs)
+				const storedIds = JSON.parse(stored) as string[]
+				if (Array.isArray(storedIds)) {
+					// Convert stored IDs to boolean array
+					const loadedPinnedTabs = nav.map((x) => storedIds.includes(x.id))
+					setPinnedTabs(loadedPinnedTabs)
 					return
 				}
 			}
