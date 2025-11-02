@@ -69,6 +69,24 @@ export default function TabLayout({
 	const [showAll, setShowAll] = useState<boolean>()
 	const [currentTab, setCurrentTab] = useState<string>(defaultActiveKey)
 	const isInitialMount = useRef(true)
+	const pinnedTabsRef = useRef<boolean[]>(getInitialPinnedTabs())
+
+	// Keep ref in sync with state
+	useEffect(() => {
+		pinnedTabsRef.current = pinnedTabs
+	}, [pinnedTabs])
+
+	// Helper function to save pinned tabs to localStorage immediately
+	const savePinnedTabsToStorage = (tabs: boolean[]) => {
+		if (!persistPinnedTabs || !pinnedTabsStorageKey || typeof window === 'undefined') return
+
+		try {
+			const pinnedIds = nav.map((x, i) => (tabs[i] ? x.id : null)).filter((id): id is string => id !== null)
+			localStorage.setItem(pinnedTabsStorageKey, JSON.stringify(pinnedIds))
+		} catch (e) {
+			console.warn('Failed to save pinned tabs to localStorage', e)
+		}
+	}
 
 	// Reload pinned tabs from localStorage when nav structure changes (if persistence is enabled)
 	useEffect(() => {
@@ -131,32 +149,57 @@ export default function TabLayout({
 		}
 	}, [nav.length, pinnedTabs.length])
 
-	// Save pinned tabs to localStorage whenever they change
+	// Save pinned tabs to localStorage whenever they change (backup for programmatic changes)
 	useEffect(() => {
 		if (!persistPinnedTabs || !pinnedTabsStorageKey || typeof window === 'undefined') return
 		// Skip save on initial mount since we just loaded from storage
 		if (isInitialMount.current) return
 
-		try {
-			const pinnedIds = nav.map((x, i) => (pinnedTabs[i] ? x.id : null)).filter((id): id is string => id !== null)
-			localStorage.setItem(pinnedTabsStorageKey, JSON.stringify(pinnedIds))
-		} catch (e) {
-			console.warn('Failed to save pinned tabs to localStorage', e)
-		}
+		savePinnedTabsToStorage(pinnedTabs)
 	}, [pinnedTabs, persistPinnedTabs, pinnedTabsStorageKey, nav])
+
+	// Save on page unload as a final safeguard
+	useEffect(() => {
+		if (!persistPinnedTabs || !pinnedTabsStorageKey || typeof window === 'undefined') return
+
+		const handleBeforeUnload = () => {
+			// Use ref to get the latest value since closure might have stale state
+			savePinnedTabsToStorage(pinnedTabsRef.current)
+		}
+
+		window.addEventListener('beforeunload', handleBeforeUnload)
+		// Also listen to visibilitychange for when user switches tabs/windows
+		const handleVisibilityChange = () => {
+			if (document.visibilityState === 'hidden') {
+				savePinnedTabsToStorage(pinnedTabsRef.current)
+			}
+		}
+		document.addEventListener('visibilitychange', handleVisibilityChange)
+
+		return () => {
+			window.removeEventListener('beforeunload', handleBeforeUnload)
+			document.removeEventListener('visibilitychange', handleVisibilityChange)
+		}
+	}, [persistPinnedTabs, pinnedTabsStorageKey, nav])
 
 	const handlePinToggle = (index: number) => {
 		const copy = [...pinnedTabs]
 		copy[index] = !copy[index]
 		setPinnedTabs(copy)
+		// Save immediately to ensure persistence before page unload
+		savePinnedTabsToStorage(copy)
 	}
 
 	const handlePinToggleAll = () => {
+		let newPinnedTabs: boolean[]
 		if (pinnedTabs.length === nav.length && pinnedTabs.reduce((p, c) => p && c, true)) {
-			setPinnedTabs(new Array(nav.length).fill(false))
+			newPinnedTabs = new Array(nav.length).fill(false)
 		} else {
-			setPinnedTabs(new Array(nav.length).fill(true))
+			newPinnedTabs = new Array(nav.length).fill(true)
 		}
+		setPinnedTabs(newPinnedTabs)
+		// Save immediately to ensure persistence before page unload
+		savePinnedTabsToStorage(newPinnedTabs)
 	}
 
 	const renderPin = (tabIndex: number) => (
