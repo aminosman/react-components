@@ -15,6 +15,6 @@ export interface Props {
     navLinkContainerProps?: any;
     navContentContainerProps?: any;
     onTitleEdit?: () => void;
-    persistPinnedTabs?: boolean;
+    pinnedTabsStorageKey?: string;
 }
-export default function TabLayout({ defaultActiveKey, nav, defaultPinnedTabs, title, loading, navLinkContainerProps, navContentContainerProps, onTitleEdit, persistPinnedTabs, }: Props): JSX.Element;
+export default function TabLayout({ defaultActiveKey, nav, defaultPinnedTabs, title, loading, navLinkContainerProps, navContentContainerProps, onTitleEdit, pinnedTabsStorageKey, }: Props): JSX.Element;
