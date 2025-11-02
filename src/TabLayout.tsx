@@ -1,5 +1,5 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Col, Nav, Row, Tab } from 'react-bootstrap'
 import ContentLoader from 'react-content-loader'
 
@@ -71,6 +71,11 @@ export default function TabLayout({
 	const isInitialMount = useRef(true)
 	const pinnedTabsRef = useRef<boolean[]>(getInitialPinnedTabs())
 
+	// Create stable nav IDs string for dependency tracking (updates when nav IDs change)
+	const navIdsString = useMemo(() => {
+		return JSON.stringify(nav.map((x) => x.id).sort())
+	}, [JSON.stringify(nav.map((x) => x.id).sort())])
+
 	// Keep ref in sync with state
 	useEffect(() => {
 		pinnedTabsRef.current = pinnedTabs
@@ -89,15 +94,38 @@ export default function TabLayout({
 							.concat(new Array(Math.max(0, nav.length - tabs.length)).fill(false))
 							.slice(0, nav.length)
 
-			// Build the pinned IDs array by iterating through all nav items
-			const pinnedIds: string[] = []
+			// Load existing pinned IDs to preserve tabs that load async
+			let existingPinnedIds: string[] = []
+			try {
+				const stored = localStorage.getItem(pinnedTabsStorageKey)
+				if (stored) {
+					const parsed = JSON.parse(stored)
+					if (Array.isArray(parsed)) {
+						existingPinnedIds = parsed
+					}
+				}
+			} catch (e) {
+				// Ignore errors when loading existing data
+			}
+
+			// Get current nav IDs to update
+			const currentNavIds = new Set(nav.map((x) => x.id))
+
+			// Remove IDs that are in current nav (we'll update them)
+			const preservedPinnedIds = existingPinnedIds.filter((id) => !currentNavIds.has(id))
+
+			// Add pinned IDs from current nav
+			const newPinnedIds: string[] = []
 			for (let i = 0; i < nav.length; i++) {
 				if (safeTabs[i] && nav[i]) {
-					pinnedIds.push(nav[i].id)
+					newPinnedIds.push(nav[i].id)
 				}
 			}
 
-			localStorage.setItem(pinnedTabsStorageKey, JSON.stringify(pinnedIds))
+			// Merge preserved (async) tabs with current nav tabs
+			const allPinnedIds = [...preservedPinnedIds, ...newPinnedIds]
+
+			localStorage.setItem(pinnedTabsStorageKey, JSON.stringify(allPinnedIds))
 		} catch (e) {
 			console.warn('Failed to save pinned tabs to localStorage', e)
 		}
@@ -127,6 +155,7 @@ export default function TabLayout({
 			if (stored) {
 				const storedPinnedIds = JSON.parse(stored) as string[]
 				if (Array.isArray(storedPinnedIds)) {
+					// Map stored IDs to current nav (handles async-loaded tabs)
 					const loadedPinnedTabs = nav.map((x) => storedPinnedIds.includes(x.id))
 					// Ensure array length matches
 					while (loadedPinnedTabs.length < nav.length) {
@@ -134,6 +163,8 @@ export default function TabLayout({
 					}
 					const finalPinnedTabs = loadedPinnedTabs.slice(0, nav.length)
 					setPinnedTabs(finalPinnedTabs)
+					// Save again to ensure all tabs (including newly loaded ones) are persisted
+					savePinnedTabsToStorage(finalPinnedTabs)
 					return
 				}
 			}
@@ -146,7 +177,7 @@ export default function TabLayout({
 			? nav.map((x) => defaultPinnedTabs?.includes(x.id))
 			: new Array(nav.length).fill(false)
 		setPinnedTabs(initialPinnedTabs)
-	}, [pinnedTabsStorageKey, persistPinnedTabs, defaultPinnedTabs, nav, pinnedTabs.length]) // Reload when nav structure changes
+	}, [pinnedTabsStorageKey, persistPinnedTabs, defaultPinnedTabs, nav.length, navIdsString]) // Reload when nav structure changes
 
 	// Ensure pinnedTabs array length always matches nav length (safety check)
 	const isSyncingLength = useRef(false)
