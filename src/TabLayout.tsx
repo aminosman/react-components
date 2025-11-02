@@ -45,23 +45,6 @@ export default function TabLayout({
 				: new Array(nav.length).fill(false)
 		}
 
-		try {
-			const stored = localStorage.getItem(pinnedTabsStorageKey)
-			if (stored) {
-				const storedTabs = JSON.parse(stored) as boolean[]
-				if (Array.isArray(storedTabs)) {
-					// Ensure array length matches nav length
-					const loadedTabs = [...storedTabs]
-					while (loadedTabs.length < nav.length) {
-						loadedTabs.push(false)
-					}
-					return loadedTabs.slice(0, nav.length)
-				}
-			}
-		} catch (e) {
-			console.warn('Failed to load pinned tabs from localStorage', e)
-		}
-
 		return defaultPinnedTabs ? nav.map((x) => defaultPinnedTabs?.includes(x.id)) : new Array(nav.length).fill(false)
 	}
 
