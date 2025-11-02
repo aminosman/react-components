@@ -1,5 +1,5 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Col, Nav, Row, Tab } from 'react-bootstrap'
 import ContentLoader from 'react-content-loader'
 
@@ -34,60 +34,130 @@ export default function TabLayout({
 	onTitleEdit,
 	persistPinnedTabs,
 }: Props) {
-	// Generate a unique localStorage key based on nav item IDs
-	const getStorageKey = () => {
+	// Generate a stable localStorage key based on nav item IDs
+	const storageKey = useMemo(() => {
 		const navIds = nav
 			.map((x) => x.id)
 			.sort()
 			.join('-')
 		return `tabLayout-pinnedTabs-${navIds}`
-	}
+	}, [JSON.stringify(nav.map((x) => x.id).sort())])
 
-	// Load pinned tabs from localStorage on mount
-	const loadPinnedTabsFromStorage = (): boolean[] | null => {
-		if (!persistPinnedTabs || typeof window === 'undefined') return null
+	// Initialize pinnedTabs state - load from localStorage if persistence is enabled
+	const getInitialPinnedTabs = (): boolean[] => {
+		if (!persistPinnedTabs || typeof window === 'undefined') {
+			return defaultPinnedTabs
+				? nav.map((x) => defaultPinnedTabs?.includes(x.id))
+				: new Array(nav.length).fill(false)
+		}
 
 		try {
-			const storageKey = getStorageKey()
 			const stored = localStorage.getItem(storageKey)
 			if (stored) {
 				const storedPinnedIds = JSON.parse(stored) as string[]
-				// Verify the stored data matches current nav structure
 				if (Array.isArray(storedPinnedIds)) {
-					return nav.map((x) => storedPinnedIds.includes(x.id))
+					const loadedPinnedTabs = nav.map((x) => storedPinnedIds.includes(x.id))
+					// Ensure array length matches
+					while (loadedPinnedTabs.length < nav.length) {
+						loadedPinnedTabs.push(false)
+					}
+					return loadedPinnedTabs.slice(0, nav.length)
 				}
 			}
 		} catch (e) {
 			console.warn('Failed to load pinned tabs from localStorage', e)
 		}
-		return null
+
+		return defaultPinnedTabs ? nav.map((x) => defaultPinnedTabs?.includes(x.id)) : new Array(nav.length).fill(false)
 	}
 
-	// Initialize pinnedTabs state
-	const initializePinnedTabs = (): boolean[] => {
-		const storedPinnedTabs = loadPinnedTabsFromStorage()
-		if (storedPinnedTabs) {
-			return storedPinnedTabs
-		}
-		return defaultPinnedTabs ? nav.map((x) => defaultPinnedTabs?.includes(x.id)) : []
-	}
-
-	const [pinnedTabs, setPinnedTabs] = useState<boolean[]>(initializePinnedTabs)
+	const [pinnedTabs, setPinnedTabs] = useState<boolean[]>(getInitialPinnedTabs)
 	const [showAll, setShowAll] = useState<boolean>()
 	const [currentTab, setCurrentTab] = useState<string>(defaultActiveKey)
+	const isInitialMount = useRef(true)
+	const lastStorageKey = useRef<string>(storageKey)
+
+	// Reload pinned tabs from localStorage when nav structure changes (if persistence is enabled)
+	useEffect(() => {
+		// Skip on initial mount since we already loaded in useState
+		if (isInitialMount.current) {
+			isInitialMount.current = false
+			lastStorageKey.current = storageKey
+			return
+		}
+
+		// Only reload if storage key actually changed (nav structure changed)
+		if (lastStorageKey.current === storageKey) {
+			return
+		}
+		lastStorageKey.current = storageKey
+
+		if (!persistPinnedTabs || typeof window === 'undefined') {
+			// If persistence disabled, reset to defaults when nav changes
+			if (pinnedTabs.length !== nav.length) {
+				const initialPinnedTabs = defaultPinnedTabs
+					? nav.map((x) => defaultPinnedTabs?.includes(x.id))
+					: new Array(nav.length).fill(false)
+				setPinnedTabs(initialPinnedTabs)
+			}
+			return
+		}
+
+		try {
+			const stored = localStorage.getItem(storageKey)
+			if (stored) {
+				const storedPinnedIds = JSON.parse(stored) as string[]
+				if (Array.isArray(storedPinnedIds)) {
+					const loadedPinnedTabs = nav.map((x) => storedPinnedIds.includes(x.id))
+					// Ensure array length matches
+					while (loadedPinnedTabs.length < nav.length) {
+						loadedPinnedTabs.push(false)
+					}
+					const finalPinnedTabs = loadedPinnedTabs.slice(0, nav.length)
+					setPinnedTabs(finalPinnedTabs)
+					return
+				}
+			}
+		} catch (e) {
+			console.warn('Failed to load pinned tabs from localStorage', e)
+		}
+
+		// Fallback to defaults if nothing in storage
+		const initialPinnedTabs = defaultPinnedTabs
+			? nav.map((x) => defaultPinnedTabs?.includes(x.id))
+			: new Array(nav.length).fill(false)
+		setPinnedTabs(initialPinnedTabs)
+	}, [storageKey, persistPinnedTabs, defaultPinnedTabs, nav, pinnedTabs.length]) // Reload when nav structure changes
+
+	// Ensure pinnedTabs array length always matches nav length (safety check)
+	useEffect(() => {
+		if (pinnedTabs.length !== nav.length) {
+			const newPinnedTabs = [...pinnedTabs]
+			// If array is shorter, pad with false
+			while (newPinnedTabs.length < nav.length) {
+				newPinnedTabs.push(false)
+			}
+			// If array is longer, trim it
+			if (newPinnedTabs.length > nav.length) {
+				newPinnedTabs.splice(nav.length)
+			}
+			setPinnedTabs(newPinnedTabs)
+		}
+	}, [nav.length, pinnedTabs.length])
 
 	// Save pinned tabs to localStorage whenever they change
 	useEffect(() => {
 		if (!persistPinnedTabs || typeof window === 'undefined') return
+		// Skip save on initial mount since we just loaded from storage
+		if (isInitialMount.current) return
 
 		try {
-			const storageKey = getStorageKey()
 			const pinnedIds = nav.map((x, i) => (pinnedTabs[i] ? x.id : null)).filter((id): id is string => id !== null)
 			localStorage.setItem(storageKey, JSON.stringify(pinnedIds))
 		} catch (e) {
 			console.warn('Failed to save pinned tabs to localStorage', e)
 		}
-	}, [pinnedTabs, persistPinnedTabs, nav])
+	}, [pinnedTabs, persistPinnedTabs, storageKey, nav])
 
 	const handlePinToggle = (index: number) => {
 		const copy = [...pinnedTabs]
@@ -96,9 +166,11 @@ export default function TabLayout({
 	}
 
 	const handlePinToggleAll = () => {
-		if (pinnedTabs.length === Object.keys(nav).length && pinnedTabs.reduce((p, c) => p && c, true)) {
-			setPinnedTabs([])
-		} else setPinnedTabs(Object.keys(nav).map((x) => true))
+		if (pinnedTabs.length === nav.length && pinnedTabs.reduce((p, c) => p && c, true)) {
+			setPinnedTabs(new Array(nav.length).fill(false))
+		} else {
+			setPinnedTabs(new Array(nav.length).fill(true))
+		}
 	}
 
 	const renderPin = (tabIndex: number) => (
@@ -118,12 +190,12 @@ export default function TabLayout({
 						icon="thumbtack"
 						onClick={handlePinToggleAll}
 						className={
-							pinnedTabs.length === Object.keys(nav).length && pinnedTabs.reduce((p, c) => p && c, true)
+							pinnedTabs.length === nav.length && pinnedTabs.reduce((p, c) => p && c, true)
 								? 'text-warning'
 								: 'text-light'
 						}
 						style={
-							pinnedTabs.length === Object.keys(nav).length && pinnedTabs.reduce((p, c) => p && c, true)
+							pinnedTabs.length === nav.length && pinnedTabs.reduce((p, c) => p && c, true)
 								? {}
 								: { transform: 'rotate(45deg)' }
 						}
