@@ -81,7 +81,22 @@ export default function TabLayout({
 		if (!persistPinnedTabs || !pinnedTabsStorageKey || typeof window === 'undefined') return
 
 		try {
-			const pinnedIds = nav.map((x, i) => (tabs[i] ? x.id : null)).filter((id): id is string => id !== null)
+			// Ensure tabs array matches nav length before saving
+			const safeTabs =
+				tabs.length === nav.length
+					? tabs
+					: [...tabs]
+							.concat(new Array(Math.max(0, nav.length - tabs.length)).fill(false))
+							.slice(0, nav.length)
+
+			// Build the pinned IDs array by iterating through all nav items
+			const pinnedIds: string[] = []
+			for (let i = 0; i < nav.length; i++) {
+				if (safeTabs[i] && nav[i]) {
+					pinnedIds.push(nav[i].id)
+				}
+			}
+
 			localStorage.setItem(pinnedTabsStorageKey, JSON.stringify(pinnedIds))
 		} catch (e) {
 			console.warn('Failed to save pinned tabs to localStorage', e)
@@ -134,8 +149,10 @@ export default function TabLayout({
 	}, [pinnedTabsStorageKey, persistPinnedTabs, defaultPinnedTabs, nav, pinnedTabs.length]) // Reload when nav structure changes
 
 	// Ensure pinnedTabs array length always matches nav length (safety check)
+	const isSyncingLength = useRef(false)
 	useEffect(() => {
 		if (pinnedTabs.length !== nav.length) {
+			isSyncingLength.current = true
 			const newPinnedTabs = [...pinnedTabs]
 			// If array is shorter, pad with false
 			while (newPinnedTabs.length < nav.length) {
@@ -146,6 +163,14 @@ export default function TabLayout({
 				newPinnedTabs.splice(nav.length)
 			}
 			setPinnedTabs(newPinnedTabs)
+			// Save after syncing length to ensure persistence
+			if (persistPinnedTabs && pinnedTabsStorageKey && !isInitialMount.current) {
+				savePinnedTabsToStorage(newPinnedTabs)
+			}
+			// Reset flag after state update
+			setTimeout(() => {
+				isSyncingLength.current = false
+			}, 0)
 		}
 	}, [nav.length, pinnedTabs.length])
 
@@ -154,6 +179,10 @@ export default function TabLayout({
 		if (!persistPinnedTabs || !pinnedTabsStorageKey || typeof window === 'undefined') return
 		// Skip save on initial mount since we just loaded from storage
 		if (isInitialMount.current) return
+		// Skip save if we're currently syncing array length to prevent saving incomplete data
+		if (isSyncingLength.current) return
+		// Only save if array lengths match to ensure we save complete data
+		if (pinnedTabs.length !== nav.length) return
 
 		savePinnedTabsToStorage(pinnedTabs)
 	}, [pinnedTabs, persistPinnedTabs, pinnedTabsStorageKey, nav])
