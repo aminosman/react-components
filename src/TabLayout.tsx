@@ -48,14 +48,14 @@ export default function TabLayout({
 		try {
 			const stored = localStorage.getItem(pinnedTabsStorageKey)
 			if (stored) {
-				const storedPinnedIds = JSON.parse(stored) as string[]
-				if (Array.isArray(storedPinnedIds)) {
-					const loadedPinnedTabs = nav.map((x) => storedPinnedIds.includes(x.id))
-					// Ensure array length matches
-					while (loadedPinnedTabs.length < nav.length) {
-						loadedPinnedTabs.push(false)
+				const storedTabs = JSON.parse(stored) as boolean[]
+				if (Array.isArray(storedTabs)) {
+					// Ensure array length matches nav length
+					const loadedTabs = [...storedTabs]
+					while (loadedTabs.length < nav.length) {
+						loadedTabs.push(false)
 					}
-					return loadedPinnedTabs.slice(0, nav.length)
+					return loadedTabs.slice(0, nav.length)
 				}
 			}
 		} catch (e) {
@@ -94,38 +94,8 @@ export default function TabLayout({
 							.concat(new Array(Math.max(0, nav.length - tabs.length)).fill(false))
 							.slice(0, nav.length)
 
-			// Load existing pinned IDs to preserve tabs that load async
-			let existingPinnedIds: string[] = []
-			try {
-				const stored = localStorage.getItem(pinnedTabsStorageKey)
-				if (stored) {
-					const parsed = JSON.parse(stored)
-					if (Array.isArray(parsed)) {
-						existingPinnedIds = parsed
-					}
-				}
-			} catch (e) {
-				// Ignore errors when loading existing data
-			}
-
-			// Get current nav IDs to update
-			const currentNavIds = new Set(nav.map((x) => x.id))
-
-			// Remove IDs that are in current nav (we'll update them)
-			const preservedPinnedIds = existingPinnedIds.filter((id) => !currentNavIds.has(id))
-
-			// Add pinned IDs from current nav
-			const newPinnedIds: string[] = []
-			for (let i = 0; i < nav.length; i++) {
-				if (safeTabs[i] && nav[i]) {
-					newPinnedIds.push(nav[i].id)
-				}
-			}
-
-			// Merge preserved (async) tabs with current nav tabs
-			const allPinnedIds = [...preservedPinnedIds, ...newPinnedIds]
-
-			localStorage.setItem(pinnedTabsStorageKey, JSON.stringify(allPinnedIds))
+			// Save raw boolean array
+			localStorage.setItem(pinnedTabsStorageKey, JSON.stringify(safeTabs))
 		} catch (e) {
 			console.warn('Failed to save pinned tabs to localStorage', e)
 		}
@@ -153,18 +123,15 @@ export default function TabLayout({
 		try {
 			const stored = localStorage.getItem(pinnedTabsStorageKey)
 			if (stored) {
-				const storedPinnedIds = JSON.parse(stored) as string[]
-				if (Array.isArray(storedPinnedIds)) {
-					// Map stored IDs to current nav (handles async-loaded tabs)
-					const loadedPinnedTabs = nav.map((x) => storedPinnedIds.includes(x.id))
-					// Ensure array length matches
-					while (loadedPinnedTabs.length < nav.length) {
-						loadedPinnedTabs.push(false)
+				const storedTabs = JSON.parse(stored) as boolean[]
+				if (Array.isArray(storedTabs)) {
+					// Ensure array length matches nav length
+					const loadedTabs = [...storedTabs]
+					while (loadedTabs.length < nav.length) {
+						loadedTabs.push(false)
 					}
-					const finalPinnedTabs = loadedPinnedTabs.slice(0, nav.length)
+					const finalPinnedTabs = loadedTabs.slice(0, nav.length)
 					setPinnedTabs(finalPinnedTabs)
-					// Save again to ensure all tabs (including newly loaded ones) are persisted
-					savePinnedTabsToStorage(finalPinnedTabs)
 					return
 				}
 			}
