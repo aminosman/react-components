@@ -21,6 +21,8 @@ export interface Props {
 	navContentContainerProps?: any
 	onTitleEdit?: () => void
 	pinnedTabsStorageKey?: string
+	onTabChange?: (id: string) => void
+	onPinToggle?: (id: string, pinned: boolean) => void
 }
 
 export default function TabLayout({
@@ -33,6 +35,8 @@ export default function TabLayout({
 	navContentContainerProps,
 	onTitleEdit,
 	pinnedTabsStorageKey,
+	onTabChange,
+	onPinToggle,
 }: Props) {
 	// Enable persistence if storage key is provided
 	const persistPinnedTabs = !!pinnedTabsStorageKey
@@ -90,6 +94,7 @@ export default function TabLayout({
 		const copy = [...pinnedTabs]
 		copy[index] = newPinned
 		setPinnedTabs(copy)
+		onPinToggle?.(tabId, newPinned)
 	}
 
 	const handlePinToggleAll = () => {
@@ -147,6 +152,7 @@ export default function TabLayout({
 								window.scrollBy(0, -50)
 								setCurrentTab(x.id)
 								setShowAll(false)
+								onTabChange?.(x.id)
 							}}
 							className={`text-white my-1 ${currentTab === x.id ? 'active' : ' bg-dark '}`}
 						>
